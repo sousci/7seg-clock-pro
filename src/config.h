@@ -6,11 +6,12 @@
 // OLED and speaker values are provisional until chime_machine.ino is supplied.
 constexpr uint8_t LED_PIN = 27;
 constexpr uint16_t LED_COUNT = 120;
-constexpr uint8_t LED_BRIGHTNESS_DEFAULT = 96;
+constexpr uint8_t LED_BRIGHTNESS_DEFAULT = 255;
 constexpr uint8_t RTC_SDA_PIN = 21;
 constexpr uint8_t RTC_SCL_PIN = 22;
+constexpr uint8_t RTC_I2C_ADDRESS = 0x32;  // RX-8025NB (7-bit address)
 constexpr uint8_t OLED_I2C_ADDRESS = 0x3C;
-constexpr uint8_t SPEAKER_PIN = 26;
+constexpr uint8_t SPEAKER_PIN = 25;
 
 constexpr uint8_t DIGIT_COUNT = 4;
 constexpr uint8_t PIXELS_PER_DIGIT = 29;
@@ -52,10 +53,6 @@ struct ClockConfig {
   ChimeSchedule chimes[MAX_CHIME_SCHEDULES];
 };
 
-inline ClockConfig settings = {
-    "", "", {"ntp.nict.jp", "time.google.com", "ntp.jst.mfeed.ad.jp"},
-    9 * 60 * 60, LedColorMode::Gradient, {0, 128, 255},
-    {{255, 0, 0}, {255, 128, 0}, {0, 255, 0}, {0, 128, 255}},
-    LED_BRIGHTNESS_DEFAULT, 32, false, 22, 0, 6, 0, {}};
-
-inline SemaphoreHandle_t settingsMutex = nullptr;
+extern ClockConfig settings;
+extern SemaphoreHandle_t settingsMutex;
+extern volatile uint32_t configGeneration;

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>7seg-clock-pro 設定</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <h1>7seg-clock-pro</h1>
+    <p id="status">状態を取得中...</p>
+    <form id="config">
+      <h2>Wi-Fi / NTP</h2>
+      <label>SSID<input name="wifiSsid" maxlength="32" required></label>
+      <label>パスワード<input name="wifiPassword" type="password" maxlength="64" placeholder="変更時のみ入力"></label>
+      <label>NTPサーバー<input name="ntp0" maxlength="63"></label>
+      <label>手動日時<input id="manualTime" type="datetime-local"></label>
+      <button id="setTime" type="button">手動時刻を設定</button>
+      <h2>表示</h2>
+      <label>明るさ <output id="brightnessValue"></output><input id="brightness" name="brightness" type="range" min="1" max="255"></label>
+      <label>色モード<select name="ledMode"><option value="0">単色</option><option value="1">桁別色</option><option value="2">グラデーション</option><option value="3">虹色</option><option value="4">アニメーション</option></select></label>
+      <label>単色<input name="solidColor" type="color"></label>
+      <label>桁1 / グラデーション開始<input name="digit0" type="color"></label>
+      <label>桁2<input name="digit1" type="color"></label>
+      <label>桁3<input name="digit2" type="color"></label>
+      <label>桁4 / グラデーション終了<input name="digit3" type="color"></label>
+      <label>アニメーション速度<input name="animationSpeed" type="range" min="1" max="128"></label>
+      <h2>スリープ</h2>
+      <label><input name="sleepEnabled" type="checkbox"> スリープを有効化</label>
+      <label>開始<input name="sleepStart" type="time"></label><label>終了<input name="sleepEnd" type="time"></label>
+      <h2>チャイム</h2>
+      <p>曜日は月〜金、メロディは現在1種類です。</p>
+      <div id="chimes"></div><button id="addChime" type="button">チャイムを追加</button>
+      <button type="submit">保存して接続</button>
+    </form>
+    <p id="result" role="status"></p>
+  </main>
+  <script src="/script.js"></script>
+</body>
+</html>
