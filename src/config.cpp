@@ -8,3 +8,5 @@ ClockConfig settings = {
 
 SemaphoreHandle_t settingsMutex = nullptr;
 volatile uint32_t configGeneration = 0;
+volatile bool ntpSyncRequested = false;
+volatile uint8_t ntpStatus = 0;

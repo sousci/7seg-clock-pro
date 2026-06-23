@@ -9,7 +9,7 @@ constexpr uint16_t LED_COUNT = 120;
 constexpr uint8_t LED_BRIGHTNESS_DEFAULT = 255;
 constexpr uint8_t RTC_SDA_PIN = 21;
 constexpr uint8_t RTC_SCL_PIN = 22;
-constexpr uint8_t RTC_I2C_ADDRESS = 0x32;  // RX-8025NB (7-bit address)
+constexpr uint8_t RTC_I2C_ADDRESS = 0x51;  // RTC-8564NB (7-bit address)
 constexpr uint8_t OLED_I2C_ADDRESS = 0x3C;
 constexpr uint8_t SPEAKER_PIN = 25;
 
@@ -56,3 +56,5 @@ struct ClockConfig {
 extern ClockConfig settings;
 extern SemaphoreHandle_t settingsMutex;
 extern volatile uint32_t configGeneration;
+extern volatile bool ntpSyncRequested;
+extern volatile uint8_t ntpStatus;

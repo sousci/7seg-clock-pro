@@ -2,15 +2,15 @@
 
 namespace {
 constexpr uint16_t NOTES[] = {330, 262, 294, 196, 196, 294, 330, 262};
-constexpr uint16_t DURATIONS[] = {1000, 1000, 1000, 3000, 1000, 1000, 1000, 3000};
+constexpr uint16_t DURATIONS[] = {500, 500, 500, 1500, 500, 500, 500, 1500};
 constexpr uint8_t NOTE_COUNT = sizeof(NOTES) / sizeof(NOTES[0]);
-constexpr uint16_t REST_MS = 50;
+constexpr uint16_t REST_MS = 25;
 }
 
 void ChimePlayer::begin(uint8_t pin) {
   pin_ = pin;
   pinMode(pin_, OUTPUT);
-  noTone(pin_);
+  digitalWrite(pin_, LOW);
 }
 
 void ChimePlayer::start() {

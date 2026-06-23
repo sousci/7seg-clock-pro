@@ -1,122 +1,99 @@
 # NeoPixel 7-Segment Clock Pro
 
-ESP32 と NeoPixel 120 個で構成する大型4桁7セグメント時計のファームウェアです。従来のWi-Fi/NTP時刻表示を基盤に、RTC基準のオフライン運用、Web設定、OTA更新、学校チャイム、OLED状態表示を統合する設備時計として開発しています。
+ESP32 DevKit、120個のWS2812B/NeoPixel、RTC、OLED、ブザーを使う設備時計ファームウェアです。通常時はRTCを時刻源にし、設定用アクセスポイントを常時提供します。既設Wi-FiはNTP同期と保守用OTAのために使用します。
 
-> **開発状況:** FreeRTOSによるタスク分散とFastLEDベースの時刻描画を実装済みです。RTC、LittleFS/Web UI、JSON設定保存、OLED、チャイム再生は実装予定です。実機での動作確認は未実施です。
+## 現在の機能
 
-## 主な機能
+- 120ピクセルの4桁 `HH:MM` 時計表示
+- FastLEDの単色、桁別色、グラデーション、虹色、アニメーション
+- 指定時間帯の消灯と黄緑1ピクセル表示
+- 最大24件のチャイム予定と非ブロッキング8音メロディ
+- RTC-8564NB（I2C `0x51`）を通常時刻源として使用
+- SSD1306 128x64 OLED（I2C `0x3C`）への状態表示
+- 設定用AP、LittleFS上のWeb設定画面、JSON設定保存
+- Web Basic認証、ArduinoOTA、USB/OTA書込み
 
-- 120ピクセルNeoPixelによる4桁（`HH:MM`）表示
-- FastLEDを用いたHSVグラデーション表示
-- Core 0 / Core 1 に分離したFreeRTOSタスク構成
-- Wi-Fiへの自動再接続とNTP同期
-- ArduinoOTAによる無線ファームウェア更新
-- 将来拡張用の設定モデル
-  - 単色・桁別・グラデーション・虹色・アニメーションのLED色モード
-  - 明るさ、アニメーション速度、スリープ時刻
-  - NTPサーバー、タイムゾーン、チャイム予定（最大24件）
+## 配線
 
-## ハードウェア要件
+| ESP32 DevKit | 接続先 | 備考 |
+|---|---|---|
+| GPIO 27 | NeoPixel DIN | LED信号線 |
+| GPIO 25 | パッシブブザー入力 | PWMメロディ出力 |
+| GPIO 21 | RTC SDA、OLED SDA | I2C共用 |
+| GPIO 22 | RTC SCL、OLED SCL | I2C共用 |
+| 3V3 | RTC VCC、OLED VCC | I2Cプルアップも3.3Vにする |
+| GND | 全モジュールのGND | NeoPixel外部電源とも共通化 |
+| 外部5V | NeoPixel VCC | ESP32のUSB/3.3Vから120LEDを給電しない |
 
-| 項目 | 現在の設定 | 備考 |
-| --- | --- | --- |
-| MCU | ESP32 Dev Module | `esp32dev` 環境 |
-| LED | WS2812B/NeoPixel、120個 | GRB、800 kHz |
-| LEDデータピン | GPIO 27 | `config.h` で変更可能 |
-| RTC | DS3231等のI2C RTC（予定） | SDA GPIO 21、SCL GPIO 22 |
-| OLED | I2C OLED（予定） | I2Cアドレス `0x3C`（暫定） |
-| スピーカー | PWM/I2S接続（予定） | GPIO 26（暫定） |
+I2CアドレスはRTC-8564NBが `0x51`、SSD1306 OLEDが `0x3C` です。ESP32 GPIOは5V非対応のため、I2CのSDA/SCLを5Vへプルアップしないでください。
 
-OLEDおよびスピーカーのピン・駆動方式は、統合対象の `chime_machine.ino` を受領後に確定します。現時点の値はコンパイル時の既定値であり、実機配線の確定値ではありません。
+## 通常動作
 
-## アーキテクチャ
+1. 起動時にRTCから時刻を読み、NeoPixel時計とOLEDを更新します。
+2. 設定用AP `7seg-clock-pro` を起動します。管理端末は常に `http://192.168.4.1` を使用できます。
+3. 保存済みWi-Fiがある場合、起動直後と以後1時間ごとに既設Wi-FiへSTA接続を試みます。
+4. NTP同期に成功するとRTCを補正し、STA接続を切断してAP常時運用へ戻ります。
+5. Wi-FiまたはNTPに失敗してもRTC時計表示を継続します。
 
-ESP32の二つのCPUコアを、ネットワーク処理とリアルタイム表示処理に分離します。NeoPixel、RTC、OLED、スピーカーはすべてCore 1で扱い、同一のハードウェアバスやタイミング依存リソースを複数タスクから同時に操作しません。
+AP/STAの切替時は単一Wi-Fi無線のチャンネル変更により、AP接続端末が一時的に再接続を要する場合があります。
 
-| Core | タスク | 周期・方式 | 責務 |
-| --- | --- | --- | --- |
-| 0 | `networkTask` | 常駐 | Wi-Fi再接続、NTP同期、ArduinoOTA処理 |
-| 0 | Async Web Server（予定） | イベント駆動 | 静的UI配信、REST API、設定更新 |
-| 1 | `clockTask` | 1秒周期 | 時刻取得、LED描画、OLED更新、チャイム判定・再生 |
-| 1 | `loop()` | 待機 | Arduinoランタイム用の待機ループ |
+## OLED表示
 
-設定値は `ClockConfig` で一元管理し、将来のWeb APIから更新する場合は `settingsMutex` により排他します。設定の永続化はLittleFS上の`/config.json`を予定し、ArduinoJsonでシリアライズします。
-
-## ディレクトリ構成
+OLEDはAPモード時にAP名と `192.168.4.1`、STA/NTP同期中に既設Wi-Fi側IPを表示します。下段にはRTC時刻またはチャイム状態を表示します。起動時にはI2Cスキャン結果もSerial Monitorへ出力します。
 
 ```text
-.
-├── platformio.ini             # PlatformIO環境と依存ライブラリ
-├── src/
-│   ├── main.cpp               # setup/loop、FreeRTOSタスク、現行LED描画
-│   ├── config.h               # ハードウェア定数と設定構造体
-│   └── 120pixel.h             # 120ピクセル用の数字セグメント対応表
-└── data/                      # LittleFSへアップロードするWeb UI（実装予定）
+I2C device found: 0x3C
+I2C device found: 0x51
+RTC: ready
 ```
 
-今後は `led_control`、`time_manager`、`web_server`、`chime_player` を個別モジュールとして追加します。
+## Web設定
 
-## 設定項目
+設定画面にはWeb Basic認証が必要です。認証情報は `include/secrets.h` にのみ置き、Gitへ追加しません。
 
-`src/config.h` の `ClockConfig` が設定の正規形です。
+```cpp
+#pragma once
+#define WEB_ADMIN_USER "admin"
+#define WEB_ADMIN_PASSWORD "Web管理用パスワード"
+#define OTA_PASSWORD "OTA用の別パスワード"
+```
 
-| 分類 | 項目 |
-| --- | --- |
-| ネットワーク | SSID、パスワード、NTPサーバー3件、UTCオフセット |
-| LED | 表示モード、単色、桁別色、明るさ、アニメーション速度 |
-| スリープ | 有効フラグ、開始・終了時刻 |
-| チャイム | 有効フラグ、時刻、メロディID、曜日ビットマスク（最大24件） |
+設定画面ではWi-Fi、NTP、明るさ、色モード、スリープ、手動時刻、チャイム予定を保存できます。設定値はLittleFSの `/config.json` に保存されます。
 
-現在はWi-Fi認証情報の既定値を空文字列にしています。Web設定機能が導入されるまでは、テスト時に `settings.wifiSsid` と `settings.wifiPassword` へ値を設定する必要があります。認証情報をGit管理対象のソースコードへ恒久的に記録しないでください。
+`Upload Filesystem Image` はLittleFS全体を書き換えるため、保存済みWi-Fi設定も消去します。実行後はAPからWi-Fiを再設定してください。
 
-## 開発環境
+## ビルドとUSB書込み
 
-- [PlatformIO](https://platformio.org/)
-- ESP32 Arduino framework
-- C++17相当のPlatformIO標準設定
-
-主要な依存ライブラリは `platformio.ini` で管理します。
-
-- FastLED
-- ArduinoJson
-- RTClib
-- ESPAsyncWebServer
-
-AsyncTCPはESP32向けESPAsyncWebServerの依存関係として解決される想定です。特定の環境で解決されない場合は、`ESP32Async/AsyncTCP` を明示的な依存ライブラリとして追加してください。
-
-## ビルドと書込み
-
-PlatformIO CLIをインストールした環境で、リポジトリのルートから実行します。
+VS CodeのPlatformIOで `esp32dev` 環境を選択します。
 
 ```sh
 pio run
+pio run --target uploadfs
 pio run --target upload
-pio device monitor --baud 115200
 ```
 
-VS CodeのPlatformIO拡張機能を使用する場合は、プロジェクトフォルダを開き、対象環境 `esp32dev` を選択してBuild/Uploadを実行してください。
+Serial Monitorは115200 baudです。書込み時はSerial Monitorを閉じます。接続に失敗する場合は、Upload開始時にESP32のBOOTボタンを押し、`Writing at` 表示後に離します。
 
-## 現在の動作
+## OTA書込み
 
-1. Core 1でFastLEDを初期化し、LEDを消灯します。
-2. Core 0がWi-Fi接続を開始します。認証情報が未設定なら接続しません。
-3. 接続成功後、NTPを設定し、ArduinoOTAを開始します。
-4. Core 1がシステム時刻を毎秒読み取り、`HH:MM`を120ピクセルのグラデーションで描画します。
+初回はUSB書込みが必要です。Wi-Fi設定後は `esp32dev-ota` 環境でOTA更新できます。
 
-RTC未実装の現段階では、描画時刻はESP32のシステム時刻に依存します。ネットワーク未接続時、またはNTP同期前は有効な時刻を表示できません。RTC導入後はRTCを通常時の時刻源とし、NTPはRTC補正専用に変更します。
+Windowsユーザー環境変数へ次を設定し、VS Codeを再起動してください。
 
-## 実装予定
+| 変数 | 内容 |
+|---|---|
+| `CLOCK_OTA_HOST` | OTA対象のIPアドレス。AP経由なら `192.168.4.1` |
+| `CLOCK_OTA_PASSWORD` | `OTA_PASSWORD` と同じ値 |
 
-- DS3231の初期化、RTC読取り、NTP同期時のRTC補正、手動日時設定
-- LittleFSの初期化と`/config.json`の原子的な保存・読込み
-- `data/` 以下の設定GUI、およびJSON REST API
-- LEDの全色モード、スリープ中の低輝度黄緑1ピクセル表示
-- `chime_machine.ino` 資産のOLED・スピーカー制御の移植
-- チャイムの曜日・時刻スケジュール判定と重複再生防止
-- 実機配線・電源容量・LED信号品質を含む動作検証
+```sh
+pio run -e esp32dev-ota --target upload
+```
 
-## 注意事項
+既設Wi-Fi側のOTAを行う場合は、STA接続中のOLED/Serial Monitor表示IPを `CLOCK_OTA_HOST` に指定します。
 
-- 120個のWS2812Bを高輝度で点灯する場合、ESP32のUSB給電だけでは電力が不足する可能性があります。LED用電源を別途用意し、ESP32とGNDを共通化してください。
-- 5 V動作のLEDへ3.3 Vロジック信号を接続する構成では、配線長・電源電圧によって信号品質が低下する場合があります。必要に応じてレベルシフタを使用してください。
-- OTAおよびWeb設定画面をネットワークへ公開する前に、認証・アクセス制御の要件を定義してください。現段階ではこれらの保護機構は未実装です。
+## 開発上の注意
+
+- `include/secrets.h` は `.gitignore` で除外済みです。強制追加しないでください。
+- I2C配線、RTC/OLEDの検出は起動ログで確認します。
+- ブザーはパッシブブザー前提です。アクティブブザーではメロディになりません。
+- RTCのバックアップ電源を取り付ければ、停電・電源断後も時計を維持できます。

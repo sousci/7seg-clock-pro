@@ -17,6 +17,8 @@
       <label>NTPサーバー<input name="ntp0" maxlength="63"></label>
       <label>手動日時<input id="manualTime" type="datetime-local"></label>
       <button id="setTime" type="button">手動時刻を設定</button>
+      <p>インターネットから時刻を取得し、RTCと時刻表示を補正します。</p>
+      <button id="syncNtp" type="button">NTPから時刻を取得</button>
       <h2>表示</h2>
       <label>明るさ <output id="brightnessValue"></output><input id="brightness" name="brightness" type="range" min="1" max="255"></label>
       <label>色モード<select name="ledMode"><option value="0">単色</option><option value="1">桁別色</option><option value="2">グラデーション</option><option value="3">虹色</option><option value="4">アニメーション</option></select></label>

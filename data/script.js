@@ -81,5 +81,9 @@ $('#setTime').onclick = async () => {
   const response = await fetch('/api/time', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:`epoch=${Math.floor(new Date(value).getTime()/1000)}`});
   result.textContent = response.ok ? '手動時刻を設定しました。' : '手動時刻の設定に失敗しました。';
 };
+$('#syncNtp').onclick = async () => {
+  const response = await fetch('/api/ntp-sync', {method:'POST'});
+  result.textContent = response.ok ? 'NTP同期を開始しました。完了まで数十秒待ってください。' : 'NTP同期要求に失敗しました。';
+};
 
 load().catch((error) => { status.textContent = `状態取得に失敗しました: ${error.message}`; });

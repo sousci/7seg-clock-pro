@@ -8,6 +8,7 @@
 #include <sys/time.h>
 
 #include "config.h"
+#include "time_manager.h"
 
 namespace {
 constexpr char CONFIG_PATH[] = "/config.json";
@@ -207,7 +208,14 @@ void startWebServer() {
     if (epoch < 1700000000) { request->send(400, "application/json", "{\"error\":\"invalid epoch\"}"); return; }
     timeval value{epoch, 0};
     settimeofday(&value, nullptr);
+    timeManager.adjustFromSystemTime();
     request->send(200, "application/json", "{\"saved\":true}");
+  });
+
+  server.on("/api/ntp-sync", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    ntpSyncRequested = true;
+    request->send(202, "application/json", "{\"requested\":true}");
   });
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -215,6 +223,13 @@ void startWebServer() {
     if (LittleFS.exists("/index.html")) request->send(LittleFS, "/index.html", "text/html");
     else request->send(503, "text/plain", "Web UI is not installed. Run PlatformIO: Upload Filesystem Image.");
   });
-  server.serveStatic("/", LittleFS, "/").setAuthentication(WEB_ADMIN_USER, WEB_ADMIN_PASSWORD);
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    request->send(LittleFS, "/style.css", "text/css");
+  });
+  server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    request->send(LittleFS, "/script.js", "application/javascript");
+  });
   server.begin();
 }
