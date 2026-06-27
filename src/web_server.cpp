@@ -3,8 +3,8 @@
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <WiFi.h>
-#include <secrets.h>
 #include <sys/time.h>
 
 #include "config.h"
@@ -12,10 +12,15 @@
 
 namespace {
 constexpr char CONFIG_PATH[] = "/config.json";
+constexpr char NVS_NAMESPACE[] = "clock";
+constexpr char NVS_CONFIG_KEY[] = "config";
 AsyncWebServer server(80);
+Preferences preferences;
 
 bool authenticate(AsyncWebServerRequest *request) {
-  if (request->authenticate(WEB_ADMIN_USER, WEB_ADMIN_PASSWORD)) return true;
+  const char *user = settings.webAdminUser[0] ? settings.webAdminUser : "admin";
+  const char *password = settings.webAdminPassword[0] ? settings.webAdminPassword : "admin";
+  if (request->authenticate(user, password)) return true;
   request->requestAuthentication();
   return false;
 }
@@ -29,6 +34,13 @@ void copyString(const JsonObjectConst &object, const char *key, char *target, si
 
 void writeConfig(JsonDocument &doc, bool includePassword) {
   JsonObject root = doc.to<JsonObject>();
+  root["webAdminUser"] = settings.webAdminUser;
+  if (includePassword) {
+    root["webAdminPassword"] = settings.webAdminPassword;
+    root["otaPassword"] = settings.otaPassword;
+  }
+  root["webAdminPasswordSet"] = settings.webAdminPassword[0] != '\0';
+  root["otaPasswordSet"] = settings.otaPassword[0] != '\0';
   root["wifiSsid"] = settings.wifiSsid;
   if (includePassword) root["wifiPassword"] = settings.wifiPassword;
   JsonArray ntp = root["ntpServers"].to<JsonArray>();
@@ -61,6 +73,9 @@ void writeConfig(JsonDocument &doc, bool includePassword) {
 }
 
 void applyConfig(const JsonObjectConst &root) {
+  copyString(root, "webAdminUser", settings.webAdminUser, sizeof(settings.webAdminUser), false);
+  copyString(root, "webAdminPassword", settings.webAdminPassword, sizeof(settings.webAdminPassword), false);
+  copyString(root, "otaPassword", settings.otaPassword, sizeof(settings.otaPassword), false);
   copyString(root, "wifiSsid", settings.wifiSsid, sizeof(settings.wifiSsid));
   copyString(root, "wifiPassword", settings.wifiPassword, sizeof(settings.wifiPassword), false);
   if (root["ntpServers"].is<JsonArrayConst>()) {
@@ -112,6 +127,17 @@ void applyConfig(const JsonObjectConst &root) {
 
 bool beginConfigStorage() {
   if (!LittleFS.begin(true)) return false;
+  if (!preferences.begin(NVS_NAMESPACE, false)) return false;
+  const String stored = preferences.getString(NVS_CONFIG_KEY, "");
+  if (stored.length() > 0) {
+    JsonDocument doc;
+    const DeserializationError error = deserializeJson(doc, stored);
+    if (error || !doc.is<JsonObject>()) return false;
+    applyConfig(doc.as<JsonObjectConst>());
+    return true;
+  }
+
+  // Migration path for units that still have the previous LittleFS /config.json.
   if (!LittleFS.exists(CONFIG_PATH)) return true;
   File file = LittleFS.open(CONFIG_PATH, "r");
   if (!file) return true;
@@ -120,19 +146,15 @@ bool beginConfigStorage() {
   file.close();
   if (error || !doc.is<JsonObject>()) return false;
   applyConfig(doc.as<JsonObjectConst>());
-  return true;
+  return saveConfig();
 }
 
 bool saveConfig() {
-  File file = LittleFS.open("/config.tmp", "w");
-  if (!file) return false;
   JsonDocument doc;
   writeConfig(doc, true);
-  const bool ok = serializeJson(doc, file) > 0;
-  file.close();
-  if (!ok) return false;
-  LittleFS.remove(CONFIG_PATH);
-  return LittleFS.rename("/config.tmp", CONFIG_PATH);
+  String body;
+  if (serializeJson(doc, body) == 0) return false;
+  return preferences.putString(NVS_CONFIG_KEY, body) > 0;
 }
 
 void startWebServer() {
@@ -146,6 +168,13 @@ void startWebServer() {
     doc["apIp"] = WiFi.softAPIP().toString();
     doc["timeValid"] = time(nullptr) > 1700000000;
     doc["epoch"] = time(nullptr);
+    doc["otaActive"] = otaActive;
+    uint32_t otaRemaining = 0;
+    if (otaActive) {
+      const uint32_t now = millis();
+      otaRemaining = static_cast<int32_t>(otaActiveUntilMs - now) > 0 ? (otaActiveUntilMs - now) / 1000UL : 0;
+    }
+    doc["otaRemainingSeconds"] = otaRemaining;
     String body;
     serializeJson(doc, body);
     request->send(200, "application/json", body);
@@ -165,11 +194,8 @@ void startWebServer() {
 
   server.on("/api/config", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
             [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    constexpr size_t MAX_CONFIG_BODY = 1024;
-    if (!request->authenticate(WEB_ADMIN_USER, WEB_ADMIN_PASSWORD)) {
-      if (index == 0) request->requestAuthentication();
-      return;
-    }
+    constexpr size_t MAX_CONFIG_BODY = 4096;
+    if (!authenticate(request)) return;
     if (total > MAX_CONFIG_BODY) {
       if (index == 0) request->send(413, "application/json", "{\"error\":\"payload too large\"}");
       return;
@@ -216,6 +242,50 @@ void startWebServer() {
     if (!authenticate(request)) return;
     ntpSyncRequested = true;
     request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/led-all", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    debugActionRequested = static_cast<uint8_t>(DebugAction::LedAllOn);
+    request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/led-chase", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    debugActionRequested = static_cast<uint8_t>(DebugAction::LedChase);
+    request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/chime", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    debugActionRequested = static_cast<uint8_t>(DebugAction::Chime);
+    request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/oled", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    debugActionRequested = static_cast<uint8_t>(DebugAction::Oled);
+    request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/rtc", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    debugActionRequested = static_cast<uint8_t>(DebugAction::Rtc);
+    request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/ntp", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    ntpDebugTestPending = true;
+    ntpSyncRequested = true;
+    debugActionRequested = static_cast<uint8_t>(DebugAction::Ntp);
+    request->send(202, "application/json", "{\"requested\":true}");
+  });
+
+  server.on("/api/debug/ota-enable", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    otaEnableRequested = true;
+    request->send(202, "application/json", "{\"requested\":true,\"seconds\":300}");
   });
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {

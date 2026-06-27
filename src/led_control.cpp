@@ -20,8 +20,55 @@ CRGB LedController::colorFor(uint8_t digit, uint16_t pixel) const {
                static_cast<uint8_t>(pixel * 255 / (LED_COUNT - 1)));
 }
 
+CRGB LedController::solidDebugColor() const {
+  return CRGB(settings.solidColor.r, settings.solidColor.g, settings.solidColor.b);
+}
+
 void LedController::begin() { FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds_, LED_COUNT); FastLED.setBrightness(settings.brightness); FastLED.clear(true); }
 void LedController::setBrightness(uint8_t brightness) { FastLED.setBrightness(brightness); }
+
+void LedController::startDebugAllOn(uint32_t durationMs) {
+  debugMode_ = 1;
+  debugUntil_ = millis() + durationMs;
+  fill_solid(leds_, LED_COUNT, solidDebugColor());
+  FastLED.show();
+}
+
+void LedController::startDebugChase() {
+  debugMode_ = 2;
+  debugPixel_ = 0;
+  debugLastStep_ = 0;
+  fill_solid(leds_, LED_COUNT, CRGB::Black);
+  FastLED.show();
+}
+
+bool LedController::updateDebug(uint32_t now) {
+  if (debugMode_ == 0) return false;
+  if (debugMode_ == 1) {
+    if (static_cast<int32_t>(now - debugUntil_) < 0) return true;
+    debugMode_ = 0;
+    fill_solid(leds_, LED_COUNT, CRGB::Black);
+    FastLED.show();
+    return false;
+  }
+  if (debugMode_ == 2) {
+    if (debugPixel_ >= LED_COUNT) {
+      debugMode_ = 0;
+      fill_solid(leds_, LED_COUNT, CRGB::Black);
+      FastLED.show();
+      return false;
+    }
+    if (debugLastStep_ == 0 || now - debugLastStep_ >= 80) {
+      debugLastStep_ = now;
+      fill_solid(leds_, LED_COUNT, CRGB::Black);
+      leds_[debugPixel_++] = solidDebugColor();
+      FastLED.show();
+    }
+    return true;
+  }
+  debugMode_ = 0;
+  return false;
+}
 
 void LedController::render(const tm &timeInfo, bool colonOn, bool sleeping) {
   fill_solid(leds_, LED_COUNT, CRGB::Black);

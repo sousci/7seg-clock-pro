@@ -22,8 +22,10 @@ constexpr uint8_t MAX_NTP_SERVERS = 3;
 
 constexpr uint32_t NTP_RESYNC_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 15UL * 1000UL;
+constexpr uint32_t OTA_ENABLE_WINDOW_MS = 5UL * 60UL * 1000UL;
 
 enum class LedColorMode : uint8_t { Solid, PerDigit, Gradient, Rainbow, Animated };
+enum class DebugAction : uint8_t { None, LedAllOn, LedChase, Chime, Oled, Rtc, Ntp };
 
 struct RgbConfig { uint8_t r; uint8_t g; uint8_t b; };
 
@@ -36,6 +38,9 @@ struct ChimeSchedule {
 };
 
 struct ClockConfig {
+  char webAdminUser[33];
+  char webAdminPassword[65];
+  char otaPassword[65];
   char wifiSsid[33];
   char wifiPassword[65];
   char ntpServers[MAX_NTP_SERVERS][64];
@@ -58,3 +63,8 @@ extern SemaphoreHandle_t settingsMutex;
 extern volatile uint32_t configGeneration;
 extern volatile bool ntpSyncRequested;
 extern volatile uint8_t ntpStatus;
+extern volatile uint8_t debugActionRequested;
+extern volatile bool ntpDebugTestPending;
+extern volatile bool otaEnableRequested;
+extern volatile bool otaActive;
+extern volatile uint32_t otaActiveUntilMs;

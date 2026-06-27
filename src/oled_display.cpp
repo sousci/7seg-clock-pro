@@ -6,6 +6,7 @@
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
 #include <Wire.h>
+#include <Arduino.h>
 
 namespace {
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
@@ -35,9 +36,36 @@ bool OledDisplay::begin() {
   return true;
 }
 
+void OledDisplay::showMessage(const char *line1, const char *line2, const char *line3, uint32_t durationMs) {
+  if (!available_) return;
+  strlcpy(message_[0], line1 ? line1 : "", sizeof(message_[0]));
+  strlcpy(message_[1], line2 ? line2 : "", sizeof(message_[1]));
+  strlcpy(message_[2], line3 ? line3 : "", sizeof(message_[2]));
+  messageUntil_ = millis() + durationMs;
+  display.clearDisplay(); display.setTextColor(SSD1306_WHITE); display.setTextSize(1);
+  display.setCursor(0, 0); display.println(message_[0]);
+  display.setTextSize(2); display.setCursor(0, 22); display.println(message_[1]);
+  display.setTextSize(1); display.setCursor(0, 54); display.print(message_[2]);
+  display.display();
+}
+
 void OledDisplay::render(const tm *timeInfo, bool chimePlaying) {
   if (!available_) return;
+  if (messageUntil_ && static_cast<int32_t>(millis() - messageUntil_) < 0) return;
+  messageUntil_ = 0;
   display.clearDisplay(); display.setTextColor(SSD1306_WHITE); display.setTextSize(1);
+  if (otaActive) {
+    const uint32_t now = millis();
+    const uint32_t remaining = static_cast<int32_t>(otaActiveUntilMs - now) > 0 ? (otaActiveUntilMs - now) / 1000UL : 0;
+    display.setCursor(0, 0); display.print("OTA ENABLED");
+    display.setCursor(0, 12); display.print(WiFi.softAPIP());
+    display.setTextSize(2); display.setCursor(22, 28);
+    display.printf("%02lu:%02lu", remaining / 60UL, remaining % 60UL);
+    display.setTextSize(1); display.setCursor(0, 54);
+    display.print("Upload to 192.168.4.1");
+    display.display();
+    return;
+  }
   display.setCursor(0, 0);
   if (WiFi.status() == WL_CONNECTED) {
     display.print("STA/NTP sync");
