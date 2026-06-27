@@ -46,14 +46,35 @@ void runOnlineFirmwareUpdate(const ClockConfig &current) {
   }
 
   onlineUpdateStatus = 2;
-  Serial.printf("Downloading firmware: %s\n", ONLINE_FIRMWARE_URL);
-  oledDisplay.showMessage("ONLINE UPDATE", "DOWNLOAD", WiFi.localIP().toString().c_str(), 5000);
-
   WiFiClientSecure client;
   client.setInsecure();  // Test implementation. Add certificate/manifest verification before production use.
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+  Serial.printf("Downloading filesystem: %s\n", ONLINE_FILESYSTEM_URL);
+  oledDisplay.showMessage("ONLINE UPDATE", "WEB UI", WiFi.localIP().toString().c_str(), 5000);
+  httpUpdate.rebootOnUpdate(false);
+  t_httpUpdate_return result = httpUpdate.updateSpiffs(client, ONLINE_FILESYSTEM_URL);
+  switch (result) {
+    case HTTP_UPDATE_FAILED:
+      onlineUpdateStatus = 4;
+      Serial.printf("Online filesystem update failed: (%d) %s\n",
+                    httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+      oledDisplay.showMessage("WEBUI FAILED", "HTTP", httpUpdate.getLastErrorString().c_str(), 5000);
+      WiFi.disconnect(false, false);
+      restartConfigAp();
+      return;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("Online filesystem update: no updates");
+      break;
+    case HTTP_UPDATE_OK:
+      Serial.println("Online filesystem update OK");
+      break;
+  }
+
+  Serial.printf("Downloading firmware: %s\n", ONLINE_FIRMWARE_URL);
+  oledDisplay.showMessage("ONLINE UPDATE", "FIRMWARE", "Downloading", 5000);
   httpUpdate.rebootOnUpdate(true);
-  const t_httpUpdate_return result = httpUpdate.update(client, ONLINE_FIRMWARE_URL);
+  result = httpUpdate.update(client, ONLINE_FIRMWARE_URL);
   switch (result) {
     case HTTP_UPDATE_FAILED:
       onlineUpdateStatus = 4;
