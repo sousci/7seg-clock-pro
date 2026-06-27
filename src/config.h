@@ -22,7 +22,7 @@ constexpr uint8_t MAX_NTP_SERVERS = 3;
 
 constexpr char FIRMWARE_VERSION[] = "0.1.0";
 constexpr char ONLINE_FIRMWARE_URL[] =
-    "https://raw.githubusercontent.com/sousci/7seg-clock-pro/main/test_firmware/firmware.bin";
+    "https://github.com/sousci/7seg-clock-pro/releases/download/v0.1.1-test/firmware.bin";
 
 constexpr uint32_t NTP_RESYNC_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 15UL * 1000UL;
