@@ -20,6 +20,10 @@ constexpr uint8_t COLON_PIXELS[COLON_PIXEL_COUNT] = {58, 59, 60, 61};
 constexpr uint8_t MAX_CHIME_SCHEDULES = 24;
 constexpr uint8_t MAX_NTP_SERVERS = 3;
 
+constexpr char FIRMWARE_VERSION[] = "0.1.0";
+constexpr char ONLINE_FIRMWARE_URL[] =
+    "https://github.com/sousci/7seg-clock-pro/releases/latest/download/firmware.bin";
+
 constexpr uint32_t NTP_RESYNC_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 15UL * 1000UL;
 constexpr uint32_t OTA_ENABLE_WINDOW_MS = 5UL * 60UL * 1000UL;
@@ -68,3 +72,5 @@ extern volatile bool ntpDebugTestPending;
 extern volatile bool otaEnableRequested;
 extern volatile bool otaActive;
 extern volatile uint32_t otaActiveUntilMs;
+extern volatile bool onlineFirmwareUpdateRequested;
+extern volatile uint8_t onlineUpdateStatus;

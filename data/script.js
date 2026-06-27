@@ -53,8 +53,8 @@ async function load() {
   $('#chimes').replaceChildren();
   (config.chimes || []).filter(c => c.enabled).forEach(addChime);
   status.textContent = device.stationConnected
-    ? `Wi-Fi接続済み: ${device.stationIp}${device.timeValid ? ' / NTP同期済み' : ' / NTP同期中'}`
-    : `設定用AP: ${device.apIp}`;
+    ? `v${device.firmwareVersion || '-'} / Wi-Fi接続済み: ${device.stationIp}${device.timeValid ? ' / NTP同期済み' : ' / NTP同期中'}`
+    : `v${device.firmwareVersion || '-'} / 設定用AP: ${device.apIp}`;
   if (device.otaActive) status.textContent += ` / OTA active: ${device.otaRemainingSeconds}s`;
 }
 

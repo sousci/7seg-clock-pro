@@ -16,3 +16,5 @@ volatile bool ntpDebugTestPending = false;
 volatile bool otaEnableRequested = false;
 volatile bool otaActive = false;
 volatile uint32_t otaActiveUntilMs = 0;
+volatile bool onlineFirmwareUpdateRequested = false;
+volatile uint8_t onlineUpdateStatus = 0;

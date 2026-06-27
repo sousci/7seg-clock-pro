@@ -162,6 +162,7 @@ void startWebServer() {
     if (!authenticate(request)) return;
     JsonDocument doc;
     doc["hostname"] = "7seg-clock-pro";
+    doc["firmwareVersion"] = FIRMWARE_VERSION;
     doc["stationConnected"] = WiFi.status() == WL_CONNECTED;
     doc["stationIp"] = WiFi.localIP().toString();
     doc["apActive"] = WiFi.getMode() & WIFI_AP;
@@ -175,6 +176,7 @@ void startWebServer() {
       otaRemaining = static_cast<int32_t>(otaActiveUntilMs - now) > 0 ? (otaActiveUntilMs - now) / 1000UL : 0;
     }
     doc["otaRemainingSeconds"] = otaRemaining;
+    doc["onlineUpdateStatus"] = onlineUpdateStatus;
     String body;
     serializeJson(doc, body);
     request->send(200, "application/json", body);
@@ -286,6 +288,12 @@ void startWebServer() {
     if (!authenticate(request)) return;
     otaEnableRequested = true;
     request->send(202, "application/json", "{\"requested\":true,\"seconds\":300}");
+  });
+
+  server.on("/api/debug/online-firmware-update", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!authenticate(request)) return;
+    onlineFirmwareUpdateRequested = true;
+    request->send(202, "application/json", "{\"requested\":true}");
   });
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {

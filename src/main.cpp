@@ -1,5 +1,7 @@
 #include <ArduinoOTA.h>
+#include <HTTPUpdate.h>
 #include <SPI.h>
+#include <WiFiClientSecure.h>
 #include <WiFi.h>
 #include "config.h"
 #include "chime_player.h"
@@ -18,6 +20,62 @@ void restartConfigAp() {
   vTaskDelay(pdMS_TO_TICKS(100));
   WiFi.softAP("7seg-clock-pro");
   Serial.printf("Config AP ready: %s\n", WiFi.softAPIP().toString().c_str());
+}
+
+bool connectStationForMaintenance(const ClockConfig &current, uint32_t timeoutMs) {
+  if (current.wifiSsid[0] == '\0') return false;
+  WiFi.begin(current.wifiSsid, current.wifiPassword);
+  const uint32_t startedAt = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < timeoutMs) {
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  return WiFi.status() == WL_CONNECTED;
+}
+
+void runOnlineFirmwareUpdate(const ClockConfig &current) {
+  onlineUpdateStatus = 1;
+  oledDisplay.showMessage("ONLINE UPDATE", "Wi-Fi", "Connecting", 5000);
+  Serial.println("Online firmware update requested");
+  if (!connectStationForMaintenance(current, 30000)) {
+    onlineUpdateStatus = 4;
+    Serial.println("Online firmware update failed: Wi-Fi unavailable");
+    oledDisplay.showMessage("UPDATE FAILED", "Wi-Fi", "Unavailable", 5000);
+    WiFi.disconnect(false, false);
+    restartConfigAp();
+    return;
+  }
+
+  onlineUpdateStatus = 2;
+  Serial.printf("Downloading firmware: %s\n", ONLINE_FIRMWARE_URL);
+  oledDisplay.showMessage("ONLINE UPDATE", "DOWNLOAD", WiFi.localIP().toString().c_str(), 5000);
+
+  WiFiClientSecure client;
+  client.setInsecure();  // Test implementation. Add certificate/manifest verification before production use.
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  httpUpdate.rebootOnUpdate(true);
+  const t_httpUpdate_return result = httpUpdate.update(client, ONLINE_FIRMWARE_URL);
+  switch (result) {
+    case HTTP_UPDATE_FAILED:
+      onlineUpdateStatus = 4;
+      Serial.printf("Online firmware update failed: (%d) %s\n",
+                    httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+      oledDisplay.showMessage("UPDATE FAILED", "HTTP", httpUpdate.getLastErrorString().c_str(), 5000);
+      WiFi.disconnect(false, false);
+      restartConfigAp();
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      onlineUpdateStatus = 3;
+      Serial.println("Online firmware update: no updates");
+      oledDisplay.showMessage("UPDATE", "NO UPDATE", "Firmware current", 5000);
+      WiFi.disconnect(false, false);
+      restartConfigAp();
+      break;
+    case HTTP_UPDATE_OK:
+      onlineUpdateStatus = 3;
+      Serial.println("Online firmware update OK; rebooting");
+      oledDisplay.showMessage("UPDATE OK", "REBOOT", "Please wait", 5000);
+      break;
+  }
 }
 
 void networkTask(void *) {
@@ -56,6 +114,10 @@ void networkTask(void *) {
       appliedGeneration = configGeneration;
       lastWifiAttempt = 0;
       WiFi.disconnect(false, false);
+    }
+    if (onlineFirmwareUpdateRequested) {
+      onlineFirmwareUpdateRequested = false;
+      runOnlineFirmwareUpdate(current);
     }
     if (!otaActive && WiFi.status() != WL_CONNECTED &&
         (ntpSyncRequested || lastWifiAttempt == 0 || now - lastWifiAttempt >= NTP_RESYNC_INTERVAL_MS)) {
